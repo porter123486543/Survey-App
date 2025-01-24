@@ -1,0 +1,401 @@
+import React, { useState } from 'react';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+
+const SurveyPlot = () => {
+  // Initial survey points for Lot 1
+  const initialSurveyPoints = [
+    { x: 5000.000, y: 5000.000 },  // Start
+    { x: 5000.000, y: 5065.870 },  // North 65.87'
+    { x: 5065.220, y: 5065.870 },  // East 65.22'
+    { x: 5065.220, y: 5024.780 },  // After curve, South 41.09'
+    { x: 4975.220, y: 5024.780 },  // West 90.00'
+    { x: 5000.000, y: 5000.000 }   // Close to start
+  ];
+
+  // Generate curve points for drawing
+  const generateInitialCurvePoints = () => {
+    const curveStart = { x: 5065.220, y: 5065.870 };  // Start of curve
+    const radius = 25;
+    const delta = 90;  // 90 degrees
+    const steps = 32;
+    const points = [];
+    
+    // Points before curve
+    points.push(initialSurveyPoints[0]);
+    points.push(initialSurveyPoints[1]);
+    points.push(initialSurveyPoints[2]);
+    
+    // Generate curve points
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const angle = delta * t;
+      const angleRad = (angle * Math.PI) / 180;
+      
+      const x = curveStart.x + radius * Math.sin(angleRad);
+      const y = curveStart.y + radius * (1 - Math.cos(angleRad));
+      points.push({ x, y });
+    }
+    
+    // Add remaining points
+    points.push(initialSurveyPoints[3]);
+    points.push(initialSurveyPoints[4]);
+    points.push(initialSurveyPoints[5]);
+    
+    return points;
+  };
+
+  const [surveyPoints, setSurveyPoints] = useState(initialSurveyPoints);
+  const [drawingPoints, setDrawingPoints] = useState(generateInitialCurvePoints());
+  const [degrees, setDegrees] = useState('');
+  const [minutes, setMinutes] = useState('');
+  const [seconds, setSeconds] = useState('');
+  const [distance, setDistance] = useState('');
+  const [primaryDirection, setPrimaryDirection] = useState('N');
+  const [secondaryDirection, setSecondaryDirection] = useState('E');
+  const [isCurve, setIsCurve] = useState(false);
+  const [radius, setRadius] = useState('');
+  const [deltaDegrees, setDeltaDegrees] = useState('');
+  const [deltaMinutes, setDeltaMinutes] = useState('');
+  const [deltaSeconds, setDeltaSeconds] = useState('');
+  const [curveLength, setCurveLength] = useState('');
+  const [tangentLength, setTangentLength] = useState('');
+  const [turnDirection, setTurnDirection] = useState('right');
+
+  const addPoint = () => {
+    try {
+      const lastPoint = surveyPoints[surveyPoints.length - 1];
+      
+      if (isCurve) {
+        if (!radius || !deltaDegrees) return;
+        
+        // Calculate curve points
+        const r = parseFloat(radius);
+        const delta = parseFloat(deltaDegrees) + 
+                     parseFloat(deltaMinutes || 0)/60 + 
+                     parseFloat(deltaSeconds || 0)/3600;
+        const steps = 32;
+        const curvePoints = [];
+        const dirMult = turnDirection === 'right' ? 1 : -1;
+        
+        // Generate curve points
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const angle = delta * t * dirMult;
+          const angleRad = (angle * Math.PI) / 180;
+          
+          const x = lastPoint.x + r * Math.sin(angleRad);
+          const y = lastPoint.y + r * (1 - Math.cos(angleRad));
+          curvePoints.push({ x, y });
+        }
+        
+        // Add end point to survey points
+        const endPoint = curvePoints[curvePoints.length - 1];
+        setSurveyPoints([...surveyPoints, endPoint]);
+        setDrawingPoints([...drawingPoints, ...curvePoints]);
+        
+      } else {
+        // Add straight line
+        const dist = parseFloat(distance);
+        let newPoint = { x: lastPoint.x, y: lastPoint.y };
+
+        if (primaryDirection === 'N') newPoint.y += dist;
+        else if (primaryDirection === 'S') newPoint.y -= dist;
+        else if (secondaryDirection === 'E') newPoint.x += dist;
+        else if (secondaryDirection === 'W') newPoint.x -= dist;
+
+        setSurveyPoints([...surveyPoints, newPoint]);
+        setDrawingPoints([...drawingPoints, newPoint]);
+      }
+      
+      // Clear inputs
+      setDegrees('');
+      setMinutes('');
+      setSeconds('');
+      setDistance('');
+      if (isCurve) {
+        setRadius('');
+        setDeltaDegrees('');
+        setDeltaMinutes('');
+        setDeltaSeconds('');
+        setCurveLength('');
+        setTangentLength('');
+        setIsCurve(false);
+      }
+    } catch (error) {
+      console.error('Error adding point:', error);
+    }
+  };
+
+  const deleteLastPoint = () => {
+    if (surveyPoints.length > 1) {
+      setSurveyPoints(surveyPoints.slice(0, -1));
+      setDrawingPoints(generateInitialCurvePoints());
+    }
+  };
+
+  const closeShape = () => {
+    if (surveyPoints.length >= 3) {
+      setSurveyPoints([...surveyPoints, surveyPoints[0]]);
+      setDrawingPoints([...drawingPoints, surveyPoints[0]]);
+    }
+  };
+
+  return (
+    <div className="w-full max-w-2xl mx-auto p-4">
+      <Card className="p-4 space-y-4">
+        {/* Input fields */}
+        <div className="grid grid-cols-6 gap-2">
+          <div>
+            <label className="block text-sm font-medium mb-1">Primary</label>
+            <select
+              value={primaryDirection}
+              onChange={(e) => setPrimaryDirection(e.target.value)}
+              className="w-full p-2 border rounded"
+            >
+              <option value="N">N</option>
+              <option value="S">S</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Degrees</label>
+            <Input
+              type="number"
+              value={degrees}
+              onChange={(e) => setDegrees(e.target.value)}
+              min="0"
+              max="90"
+              placeholder="0-90"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Minutes</label>
+            <Input
+              type="number"
+              value={minutes}
+              onChange={(e) => setMinutes(e.target.value)}
+              min="0"
+              max="59"
+              placeholder="0-59"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Seconds</label>
+            <Input
+              type="number"
+              value={seconds}
+              onChange={(e) => setSeconds(e.target.value)}
+              min="0"
+              max="59"
+              placeholder="0-59"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Secondary</label>
+            <select
+              value={secondaryDirection}
+              onChange={(e) => setSecondaryDirection(e.target.value)}
+              className="w-full p-2 border rounded"
+            >
+              <option value="E">E</option>
+              <option value="W">W</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Distance</label>
+            <Input
+              type="number"
+              value={distance}
+              onChange={(e) => setDistance(e.target.value)}
+              placeholder="Distance"
+              min="0"
+              step="0.001"
+            />
+          </div>
+        </div>
+
+        {/* Curve inputs */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={isCurve}
+              onChange={(e) => setIsCurve(e.target.checked)}
+              className="w-4 h-4"
+            />
+            <label className="text-sm font-medium">Add Curve</label>
+          </div>
+
+          {isCurve && (
+            <div className="grid grid-cols-7 gap-2">
+              <div>
+                <label className="block text-sm font-medium mb-1">Radius</label>
+                <Input
+                  type="number"
+                  value={radius}
+                  onChange={(e) => setRadius(e.target.value)}
+                  placeholder="Radius"
+                  min="0"
+                  step="0.001"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Delta °</label>
+                <Input
+                  type="number"
+                  value={deltaDegrees}
+                  onChange={(e) => setDeltaDegrees(e.target.value)}
+                  placeholder="Degrees"
+                  min="0"
+                  max="359"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Delta '</label>
+                <Input
+                  type="number"
+                  value={deltaMinutes}
+                  onChange={(e) => setDeltaMinutes(e.target.value)}
+                  placeholder="Minutes"
+                  min="0"
+                  max="59"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Delta "</label>
+                <Input
+                  type="number"
+                  value={deltaSeconds}
+                  onChange={(e) => setDeltaSeconds(e.target.value)}
+                  placeholder="Seconds"
+                  min="0"
+                  max="59"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Length</label>
+                <Input
+                  type="number"
+                  value={curveLength}
+                  onChange={(e) => setCurveLength(e.target.value)}
+                  placeholder="Length"
+                  step="0.001"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Tangent</label>
+                <Input
+                  type="number"
+                  value={tangentLength}
+                  onChange={(e) => setTangentLength(e.target.value)}
+                  placeholder="Tangent"
+                  step="0.001"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Turn</label>
+                <select
+                  value={turnDirection}
+                  onChange={(e) => setTurnDirection(e.target.value)}
+                  className="w-full p-2 border rounded"
+                >
+                  <option value="right">Right</option>
+                  <option value="left">Left</option>
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-2">
+          <Button 
+            onClick={addPoint}
+            className="flex-1"
+            disabled={(!distance || !degrees) && (!radius || !deltaDegrees)}
+          >
+            Add Point
+          </Button>
+          <Button
+            onClick={deleteLastPoint}
+            variant="destructive"
+            className="flex-1"
+            disabled={surveyPoints.length <= 1}
+          >
+            Delete Last Point
+          </Button>
+          <Button
+            onClick={closeShape}
+            className="flex-1"
+            disabled={surveyPoints.length < 3}
+          >
+            Close Shape
+          </Button>
+        </div>
+
+        {/* Plot */}
+        <div className="h-96 border rounded p-4">
+          <LineChart
+            width={500}
+            height={300}
+            data={drawingPoints}
+            margin={{ top: 5, right: 20, left: 20, bottom: 5 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis 
+              dataKey="x"
+              type="number"
+              domain={[4950, 5100]}
+              tickCount={8}
+            />
+            <YAxis
+              type="number"
+              domain={[4950, 5100]}
+              tickCount={8}
+            />
+            <Tooltip 
+              formatter={(value) => value.toFixed(3)}
+            />
+            <Line 
+              type="linear"
+              dataKey="y"
+              stroke="#82ca9d"
+              strokeWidth={2}
+              dot={({ cx, cy, payload, index }) => {
+                const isSurveyPoint = surveyPoints.some(p => 
+                  Math.abs(p.x - payload.x) < 0.001 && Math.abs(p.y - payload.y) < 0.001
+                );
+                if (isSurveyPoint) {
+                  return (
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={4}
+                      fill="#82ca9d"
+                    />
+                  );
+                }
+                return null;
+              }}
+              connectNulls
+            />
+          </LineChart>
+        </div>
+
+        {/* Points list */}
+        <div className="mt-4">
+          <h3 className="font-medium mb-2">Points:</h3>
+          {surveyPoints.map((point, index) => (
+            <div key={index} className="text-sm">
+              Point {index + 1}: ({point.x.toFixed(3)}, {point.y.toFixed(3)})
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+export default SurveyPlot;
